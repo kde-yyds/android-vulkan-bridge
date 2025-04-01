@@ -12,7 +12,7 @@ pkgdesc="A library to enable Android and Wayland compatibility"
 arch=('x86_64' 'aarch64' 'armv7h')  # Adjust as necessary
 url="https://github.com/Linux-on-droid/libhybris"
 license=('LGPL2.1')
-depends=('make' 'autoconf' 'automake' 'libtool' 'pkg-config' 'wayland' 'android-headers-30' 'wayland-protocols' 'python' 'mesa' 'libglvnd')
+depends=('make' 'autoconf' 'automake' 'libtool' 'pkg-config' 'wayland' 'android-headers' 'wayland-protocols' 'python' 'mesa' 'libglvnd')
 source=("git+https://github.com/Linux-on-droid/libhybris.git")
 sha256sums=('SKIP')  # SKIP since we're using git for source
 
