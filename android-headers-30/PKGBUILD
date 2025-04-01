@@ -6,6 +6,8 @@ arch=('aarch64')
 url="https://github.com/Linux-on-droid/android-headers-30"
 license=('GPL2')
 depends=('make')
+provides=('android-headers')
+conflicts=('android-headers')
 source=("git+https://github.com/Linux-on-droid/android-headers-30.git")
 sha256sums=('SKIP')
 
