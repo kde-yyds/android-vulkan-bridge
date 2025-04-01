@@ -1,0 +1,39 @@
+From 30bb701364c949a82b99eb9ab17c9eabdaf18c09 Mon Sep 17 00:00:00 2001
+From: Hecheng Yu <kde-yyds@qq.com>
+Date: Mon, 31 Mar 2025 13:36:02 +0000
+Subject: [PATCH 2/2] link with ahb-wrapper
+
+---
+ CMakeLists.txt | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 96af204..1afd5e7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -20,7 +20,7 @@
+ # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ # SOFTWARE.
+ 
+-cmake_minimum_required(VERSION 3.4.3)
++cmake_minimum_required(VERSION 3.10.3)
+ project(VkLayer_window_system_integration)
+ 
+ find_package(PkgConfig REQUIRED)
+@@ -250,11 +250,12 @@ if(BUILD_WSI_X11)
+ 
+    target_include_directories(wsi_x11 PRIVATE
+       ${PROJECT_SOURCE_DIR}
++      /usr/include/android
+       ${VULKAN_CXX_INCLUDE}
+       ${CMAKE_CURRENT_BINARY_DIR})
+ 
+    target_compile_options(wsi_x11 INTERFACE "-DBUILD_WSI_X11=1")
+-   list(APPEND LINK_WSI_LIBS wsi_x11 xcb xcb-present xcb-xfixes xcb-dri3 X11-xcb android)
++   list(APPEND LINK_WSI_LIBS wsi_x11 xcb xcb-present xcb-xfixes xcb-dri3 X11-xcb ahb-wrapper)
+ else()
+    list(APPEND JSON_COMMANDS COMMAND sed -i '/VK_KHR_xcb_surface/d' ${CMAKE_CURRENT_BINARY_DIR}/VkLayer_window_system_integration.json)
+    list(APPEND JSON_COMMANDS COMMAND sed -i '/VK_KHR_xlib_surface/d' ${CMAKE_CURRENT_BINARY_DIR}/VkLayer_window_system_integration.json)
+-- 
+2.49.0
+

@@ -1,0 +1,73 @@
+# Maintainer: Your Name <your.email@example.com>
+# Package: libhybris
+# Description: A library to enable Android and Wayland compatibility
+# URL: https://github.com/Linux-on-droid/libhybris
+# License: LGPL-2.1
+# Depends: make, autoconf, automake, libtool, pkg-config, wayland, android-headers
+
+pkgname=libhybris
+pkgver=1.0
+pkgrel=1
+pkgdesc="A library to enable Android and Wayland compatibility"
+arch=('x86_64' 'aarch64' 'armv7h')  # Adjust as necessary
+url="https://github.com/Linux-on-droid/libhybris"
+license=('LGPL2.1')
+depends=('make' 'autoconf' 'automake' 'libtool' 'pkg-config' 'wayland' 'android-headers-30' 'wayland-protocols' 'python' 'mesa' 'libglvnd')
+source=("git+https://github.com/Linux-on-droid/libhybris.git")
+sha256sums=('SKIP')  # SKIP since we're using git for source
+
+prepare() {
+  cd "$srcdir"/libhybris
+  # No need for special preparation, we will just set up the build directory
+}
+
+build() {
+  cd "$srcdir"/libhybris/hybris
+
+  export CFLAGS="$CFLAGS -Wa,--noexecstack"
+  export CXXFLAGS="$CXXFLAGS -Wa,--noexecstack"
+  export LDFLAGS="$LDFLAGS -Wl,-z,noexecstack"
+  
+  # Run the autogen.sh script to generate the configure script
+  ./autogen.sh --enable-wayland \
+               --with-android-headers=/usr/include/android/ \
+               --enable-property-cache \
+               --enable-experimental \
+               --enable-clicd \
+               --enable-arch=arm64 \
+               --enable-mali-quirks \
+               --enable-adreno-quirks \
+	       --enable-glvnd \
+               --prefix=/usr
+
+  # Build the package using all available cores
+  make -j$(nproc)
+}
+
+package() {
+  cd "$srcdir"/libhybris/hybris
+  
+  # Install the package files into the package directory
+  make DESTDIR="$pkgdir" install
+
+  # Remove unwanted files
+  rm -f "$pkgdir"/usr/include/EGL/egl.h
+  rm -f "$pkgdir"/usr/include/EGL/eglext.h
+  rm -f "$pkgdir"/usr/include/EGL/eglmesaext.h
+  rm -f "$pkgdir"/usr/include/EGL/eglplatform.h
+  rm -f "$pkgdir"/usr/include/GLES2/gl2.h
+  rm -f "$pkgdir"/usr/include/GLES2/gl2ext.h
+  rm -f "$pkgdir"/usr/include/GLES2/gl2platform.h
+  rm -f "$pkgdir"/usr/include/GLES3/gl3.h
+  rm -f "$pkgdir"/usr/include/GLES3/gl31.h
+  rm -f "$pkgdir"/usr/include/GLES3/gl32.h
+  rm -f "$pkgdir"/usr/include/GLES3/gl3platform.h
+  rm -f "$pkgdir"/usr/include/KHR/khrplatform.h
+  rm -f "$pkgdir"/usr/lib/pkgconfig/OpenCL.pc
+  mv "$pkgdir"/usr/share/glvnd/egl_vendor.d/10_libhybris.json "$pkgdir"/usr/share/glvnd/egl_vendor.d/99_libhybris.json
+}
+
+# Optional clean-up to remove unnecessary files
+# clean() {
+#   rm -rf "$srcdir"
+# }

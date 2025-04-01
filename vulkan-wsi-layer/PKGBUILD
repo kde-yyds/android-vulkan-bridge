@@ -1,0 +1,44 @@
+pkgname=vulkan-wsi-layer
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Vulkan WSI Layer to enable Android Vulkan in GNU/Linux containers"
+arch=('aarch64')
+url="https://github.com/xMeM/vulkan-wsi-layer"
+license=('MIT')
+depends=('vulkan-icd-loader' 'libdrm' 'xcb-util-wm' 'xcb-util-keysyms' 'libxcb' 'libx11' 'ahb-wrapper')
+makedepends=('cmake' 'pkg-config' 'git' 'patchelf')
+
+prepare() {
+    cd "$srcdir"
+    
+    # Clone the repository if it doesn't exist
+    if [ ! -d "vulkan-wsi-layer" ]; then
+        git clone --depth 1 "$url" vulkan-wsi-layer
+    fi
+    
+    cd vulkan-wsi-layer
+    # Apply all patches from the patch directory
+    for patch in "$srcdir"/../patch/*.patch; do
+        echo "Applying patch: $patch"
+        patch -p1 -i "$patch"
+    done
+}
+
+build() {
+    cd "$srcdir/vulkan-wsi-layer"
+    
+    # Create build directory
+    mkdir -p build
+    cd build
+    export CC=clang
+    export CXX=clang++    
+    # Configure with CMake
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+    make -j$(nproc)
+}
+
+package() {
+    cd "$srcdir/vulkan-wsi-layer/build"
+    patchelf libVkLayer_window_system_integration.so --add-needed libahb-wrapper.so
+    make DESTDIR="$pkgdir" install
+}

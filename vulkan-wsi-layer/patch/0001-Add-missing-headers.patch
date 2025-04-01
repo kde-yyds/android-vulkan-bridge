@@ -1,0 +1,40 @@
+From 6d70a40a43276314326c2a1a1a7a6ea5d2a323b1 Mon Sep 17 00:00:00 2001
+From: Hecheng Yu <kde-yyds@qq.com>
+Date: Mon, 31 Mar 2025 13:35:24 +0000
+Subject: [PATCH 1/2] Add missing headers
+
+---
+ util/custom_allocator.hpp | 2 +-
+ wsi/x11/swapchain.cpp     | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/util/custom_allocator.hpp b/util/custom_allocator.hpp
+index a34164a..b2d51f7 100644
+--- a/util/custom_allocator.hpp
++++ b/util/custom_allocator.hpp
+@@ -28,7 +28,7 @@
+ #include <string>
+ #include <cassert>
+ #include <memory>
+-
++#include <stdexcept>
+ #include <vulkan/vulkan.h>
+ 
+ #include "helpers.hpp"
+diff --git a/wsi/x11/swapchain.cpp b/wsi/x11/swapchain.cpp
+index 89a6c2f..d021d4c 100644
+--- a/wsi/x11/swapchain.cpp
++++ b/wsi/x11/swapchain.cpp
+@@ -53,7 +53,8 @@
+ #include "swapchain.hpp"
+ #include "util/log.hpp"
+ #include "wsi/swapchain_base.hpp"
+-
++#include <stdexcept>
++#include <system_error>
+ namespace wsi
+ {
+ namespace x11
+-- 
+2.49.0
+

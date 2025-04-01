@@ -1,0 +1,9 @@
+*/*.pkg.tar*
+*/pkg/
+android-headers-30/android-headers-30
+android-headers-30/src
+libhybris/src
+libhybris/libhybris/
+sysvk/sysvk
+sysvk/src
+vulkan-wsi-layer/src

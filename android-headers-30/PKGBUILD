@@ -1,0 +1,33 @@
+pkgname=android-headers-30
+pkgver=1.0
+pkgrel=1
+pkgdesc="Android 30 headers for building Android-related software"
+arch=('aarch64')
+url="https://github.com/Linux-on-droid/android-headers-30"
+license=('GPL2')
+depends=('make')
+source=("git+https://github.com/Linux-on-droid/android-headers-30.git")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$srcdir"/android-headers-30
+  # No specific prepare steps for this package
+}
+
+build() {
+  cd "$srcdir"/android-headers-30
+  # Run 'make' to build the package (optional, as it has no output)
+  make
+}
+
+package() {
+  cd "$srcdir"/android-headers-30
+  export PREFIX=/usr/
+  # Set DESTDIR to the package directory to install files there
+  make DESTDIR="$pkgdir" install
+}
+
+# Optional clean-up to remove unnecessary files
+# clean() {
+#   rm -rf "$srcdir"
+# }

@@ -1,0 +1,31 @@
+pkgname=sysvk-git
+pkgver=r1.23ecd77
+pkgrel=1
+pkgdesc="A vulkan icd to load android vulkan library"
+arch=('aarch64')
+url="https://github.com/xMeM/sysvk"
+license=('unknown')
+depends=('vulkan-icd-loader' 'libhybris')
+makedepends=('git' 'cmake' 'make' 'gcc')
+provides=("${pkgname%-git}")
+conflicts=("${pkgname%-git}")
+source=('git+https://github.com/xMeM/sysvk.git')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/sysvk"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$srcdir/sysvk"
+  cmake -B build \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release
+  cmake --build build
+}
+
+package() {
+  cd "$srcdir/sysvk"
+  DESTDIR="$pkgdir" cmake --install build
+}

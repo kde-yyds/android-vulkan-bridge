@@ -1,0 +1,26 @@
+pkgname=ahb-wrapper
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="AHardwareBuffer wrapper for libhybris to enable Android Vulkan in GNU/Linux containers"
+arch=('aarch64')
+url="https://github.com/kde-yyds/vulkan-android-bridge"
+license=('GPL2')
+depends=('libhybris')
+makedepends=('cmake')
+
+prepare() {
+    mkdir -p "${srcdir}/build"
+}
+
+build() {
+    cd "${srcdir}/build"
+    cmake "${srcdir}/../src" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    make
+}
+
+package() {
+    cd "${srcdir}/build"
+    make DESTDIR="${pkgdir}" install
+}
