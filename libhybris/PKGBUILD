@@ -28,6 +28,7 @@ build() {
   export CXXFLAGS="$CXXFLAGS -Wa,--noexecstack"
   export LDFLAGS="$LDFLAGS -Wl,-z,noexecstack"
   
+  sed -i 's/#if VK_HEADER_VERSION >= 269/#if 0/g' vulkan/vulkan.c
   # Run the autogen.sh script to generate the configure script
   ./autogen.sh --enable-wayland \
                --with-android-headers=/usr/include/android/ \
@@ -64,6 +65,8 @@ package() {
   rm -f "$pkgdir"/usr/include/GLES3/gl3platform.h
   rm -f "$pkgdir"/usr/include/KHR/khrplatform.h
   rm -f "$pkgdir"/usr/lib/pkgconfig/OpenCL.pc
+  rm -f "$pkgdir"/usr/lib/libvulkan.so
+  rm -f "$pkgdir"/usr/lib/libvulkan.so.1
   mv "$pkgdir"/usr/share/glvnd/egl_vendor.d/10_libhybris.json "$pkgdir"/usr/share/glvnd/egl_vendor.d/99_libhybris.json
 }
 
