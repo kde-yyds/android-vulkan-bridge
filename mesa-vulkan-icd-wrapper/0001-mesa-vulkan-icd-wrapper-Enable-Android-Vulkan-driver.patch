@@ -1,0 +1,408 @@
+From 0a903db356bc26aa39a3a3b9a31a880a5494981e Mon Sep 17 00:00:00 2001
+From: Hecheng Yu <kde-yyds@qq.com>
+Date: Sun, 21 Dec 2025 19:07:28 +0800
+Subject: [PATCH] mesa-vulkan-icd-wrapper: Enable Android Vulkan driver support
+ on Linux via libhybris
+
+This patch modifies mesa-vulkan-icd-wrapper to work with Android GPU drivers on GNU Linux systems by using libhybris to bridge Android and Linux userspace.
+
+Key changes:
+
+* Use hybris_dlopen/hybris_dlsym instead of standard dlopen/dlsym to load
+  Android's native Vulkan driver
+
+* Enable AHardwareBuffer support unconditionally instead of only for Android
+  builds, allowing Android drivers to use their native buffer management on
+  Linux
+
+* Add -Wl,-z,nodelete linker flag to prevent premature library unloading
+  which caused crashes during Vulkan initialization
+
+* Link against libhybris-common and libahb-wrapper to provide Android buffer
+  management on Linux
+
+* Fix include paths for Android headers installed in /usr/include/android
+  instead of system Android paths
+
+* Add missing system headers (fcntl.h, unistd.h, timespec.h) and define
+  __ANDROID_API__ macros to satisfy Android API checks
+
+* Enable X11 WSI integration with AHardwareBuffer, using socketpair for
+  synchronization when passing buffers through DRI3
+
+* Remove android-stub requirement when building with wrapper_vk enabled
+
+This allows Android GPU drivers (e.g., ARM Mali) to function on GNU Linux with Termux X11
+
+Tested with Mali-G610 driver on Arch Linux ARM with Termux:X11.
+---
+ include/vulkan/vk_android_native_buffer.h    |  4 ++--
+ meson.build                                  |  6 +++---
+ src/loader/loader_wayland_helper.c           |  1 +
+ src/util/perf/cpu_trace.h                    |  2 +-
+ src/vulkan/wrapper/meson.build               | 10 +++++++---
+ src/vulkan/wrapper/wrapper_device_memory.c   |  5 ++++-
+ src/vulkan/wrapper/wrapper_instance.c        | 16 +++++++++-------
+ src/vulkan/wrapper/wrapper_physical_device.c |  4 +++-
+ src/vulkan/wsi/meson.build                   |  3 ++-
+ src/vulkan/wsi/wsi_common.c                  | 15 ++++++++-------
+ src/vulkan/wsi/wsi_common.h                  |  2 +-
+ src/vulkan/wsi/wsi_common_ahardware_buffer.c |  3 +++
+ src/vulkan/wsi/wsi_common_private.h          |  4 ++--
+ src/vulkan/wsi/wsi_common_x11.c              | 11 +++++++----
+ 14 files changed, 53 insertions(+), 33 deletions(-)
+
+diff --git a/include/vulkan/vk_android_native_buffer.h b/include/vulkan/vk_android_native_buffer.h
+index 21f82ef57a2..d8205fe1867 100644
+--- a/include/vulkan/vk_android_native_buffer.h
++++ b/include/vulkan/vk_android_native_buffer.h
+@@ -17,9 +17,9 @@
+  * system rather the build target.
+  */
+ 
+-#if defined(__ANDROID__) || defined(ANDROID)
++#if 1
+ 
+-#include <cutils/native_handle.h>
++#include <android/cutils/native_handle.h>
+ #if ANDROID_API_LEVEL < 28
+ /* buffer_handle_t was defined in the deprecated system/window.h */
+ typedef const native_handle_t *buffer_handle_t;
+diff --git a/meson.build b/meson.build
+index b9edca30189..3b9859f9239 100644
+--- a/meson.build
++++ b/meson.build
+@@ -854,9 +854,9 @@ endif
+ pre_args += '-DGLAPI_EXPORT_PROTO_ENTRY_POINTS=@0@'.format(with_glapi_export_proto_entry_points.to_int())
+ 
+ with_android_stub = get_option('android-stub')
+-if with_wrapper_vk
+-  with_android_stub = true
+-endif
++#if with_wrapper_vk
++#  with_android_stub = true
++#endif
+ 
+ with_libbacktrace = get_option('android-libbacktrace') \
+   .require(with_platform_android, error_message : '`-D android-libbacktrace=enabled` makes no sense without `-D platforms=android`') \
+diff --git a/src/loader/loader_wayland_helper.c b/src/loader/loader_wayland_helper.c
+index 5953f3e7bed..960264bcf23 100644
+--- a/src/loader/loader_wayland_helper.c
++++ b/src/loader/loader_wayland_helper.c
+@@ -24,6 +24,7 @@
+ #include <errno.h>
+ 
+ #include "util/perf/cpu_trace.h"
++#include "util/timespec.h"
+ 
+ #include "loader_wayland_helper.h"
+ 
+diff --git a/src/util/perf/cpu_trace.h b/src/util/perf/cpu_trace.h
+index c495dd5295a..a607024aa6f 100644
+--- a/src/util/perf/cpu_trace.h
++++ b/src/util/perf/cpu_trace.h
+@@ -12,7 +12,7 @@
+ #include "util/detect_os.h"
+ #include "util/macros.h"
+ 
+-#if defined(HAVE_PERFETTO)
++#if 1
+ 
+ /* note that util_perfetto_is_tracing_enabled always returns false util
+  * util_perfetto_init is called
+diff --git a/src/vulkan/wrapper/meson.build b/src/vulkan/wrapper/meson.build
+index b66b7386ffb..a21fd4614e8 100644
+--- a/src/vulkan/wrapper/meson.build
++++ b/src/vulkan/wrapper/meson.build
+@@ -77,8 +77,9 @@ wrapper_deps = [
+   idep_vulkan_lite_runtime,
+   idep_vulkan_util,
+   idep_vulkan_wsi,
+-  dep_android,
+-]
++  ]
++
++hybris_dep = cc.find_library('hybris-common', required: true)
+ 
+ libvulkan_wrapper = shared_library(
+   'vulkan_wrapper',
+@@ -86,8 +87,11 @@ libvulkan_wrapper = shared_library(
+   include_directories: [
+     inc_include,
+     inc_src,
++    include_directories('/usr/include/android'),
++    include_directories('/usr/include/hybris'),
+   ],
+-  dependencies: [wrapper_deps, vulkan_wsi_deps],
++  dependencies: [wrapper_deps, vulkan_wsi_deps, hybris_dep],
+   gnu_symbol_visibility: 'hidden',
++  link_args: ['-L/lib', '-lahb-wrapper', '-Wl,-z,nodelete'],
+   install: true,
+ )
+diff --git a/src/vulkan/wrapper/wrapper_device_memory.c b/src/vulkan/wrapper/wrapper_device_memory.c
+index 33022fc25c3..d801b826220 100644
+--- a/src/vulkan/wrapper/wrapper_device_memory.c
++++ b/src/vulkan/wrapper/wrapper_device_memory.c
+@@ -4,12 +4,15 @@
+ #include "util/os_file.h"
+ #include "vk_util.h"
+ 
++#define __ANDROID_API__ 30
++#define __INTRODUCED_IN(x)
++
+ #include <android/hardware_buffer.h>
+ #include <vndk/hardware_buffer.h>
+ #include <sys/mman.h>
+ #include <sys/ioctl.h>
+ #include <linux/dma-heap.h>
+-
++#include <fcntl.h>
+ static int
+ safe_ioctl(int fd, unsigned long request, void *arg)
+ {
+diff --git a/src/vulkan/wrapper/wrapper_instance.c b/src/vulkan/wrapper/wrapper_instance.c
+index 8a2aba85b33..e20df7b88eb 100644
+--- a/src/vulkan/wrapper/wrapper_instance.c
++++ b/src/vulkan/wrapper/wrapper_instance.c
+@@ -4,6 +4,7 @@
+ #include "vk_common_entrypoints.h"
+ #include "vk_dispatch_table.h"
+ #include "vk_extensions.h"
++#include <dlfcn/dlfcn.h>
+ 
+ uint64_t WRAPPER_DEBUG;
+ 
+@@ -60,25 +61,26 @@ static bool vulkan_library_init()
+ {
+    if (vulkan_library_handle)
+       return true;
+-
++   
+    WRAPPER_DEBUG = parse_debug_string(getenv("WRAPPER_DEBUG"),
+                                       debug_control);
+ 
+    const char *env = getenv("WRAPPER_VULKAN_PATH");
+-   vulkan_library_handle = dlopen(env ? env : DEFAULT_VULKAN_PATH,
++   
++   vulkan_library_handle = hybris_dlopen(env ? env : DEFAULT_VULKAN_PATH,
+                                   RTLD_LOCAL | RTLD_NOW);
+ 
+    if (vulkan_library_handle) {
+-      create_instance = dlsym(vulkan_library_handle, "vkCreateInstance");
+-      get_instance_proc_addr = dlsym(vulkan_library_handle,
++      create_instance = hybris_dlsym(vulkan_library_handle, "vkCreateInstance");
++      get_instance_proc_addr = hybris_dlsym(vulkan_library_handle,
+                                      "vkGetInstanceProcAddr");
+-      enumerate_instance_version = dlsym(vulkan_library_handle,
++      enumerate_instance_version = hybris_dlsym(vulkan_library_handle,
+                                          "vkEnumerateInstanceVersion");
+       enumerate_instance_extension_properties =
+-         dlsym(vulkan_library_handle, "vkEnumerateInstanceExtensionProperties");
++         hybris_dlsym(vulkan_library_handle, "vkEnumerateInstanceExtensionProperties");
+    }
+    else {
+-      fprintf(stderr, "%s", dlerror());
++      fprintf(stderr, "%s", hybris_dlerror());
+    }
+ 
+    return vulkan_library_handle ? true : false;
+diff --git a/src/vulkan/wrapper/wrapper_physical_device.c b/src/vulkan/wrapper/wrapper_physical_device.c
+index 56a18847154..04285a6084c 100644
+--- a/src/vulkan/wrapper/wrapper_physical_device.c
++++ b/src/vulkan/wrapper/wrapper_physical_device.c
+@@ -9,6 +9,8 @@
+ #include "vk_util.h"
+ #include "wsi_common.h"
+ #include "util/os_misc.h"
++#include <fcntl.h>
++#include <unistd.h>
+ 
+ static VkResult
+ wrapper_setup_device_extensions(struct wrapper_physical_device *pdevice) {
+@@ -155,7 +157,7 @@ VkResult enumerate_physical_device(struct vk_instance *_instance)
+       }
+       pdevice->vk.wsi_device = &pdevice->wsi_device;
+       pdevice->wsi_device.force_bgra8_unorm_first = true;
+-#ifdef __TERMUX__
++#if 1
+       pdevice->wsi_device.wants_ahardware_buffer = true;
+ #endif
+ 
+diff --git a/src/vulkan/wsi/meson.build b/src/vulkan/wsi/meson.build
+index 61e9f1ab300..7ad83257263 100644
+--- a/src/vulkan/wsi/meson.build
++++ b/src/vulkan/wsi/meson.build
+@@ -11,6 +11,7 @@ endif
+ 
+ if with_wrapper_vk
+   files_vulkan_wsi += files('wsi_common_ahardware_buffer.c')
++  platform_deps += cc.find_library('ahb-wrapper', dirs: ['/lib'], required: true)
+ endif
+ 
+ if with_platform_x11
+@@ -58,7 +59,7 @@ wsi_entrypoints = custom_target(
+ libvulkan_wsi = static_library(
+   'vulkan_wsi',
+   [files_vulkan_wsi, wsi_entrypoints],
+-  include_directories : [inc_include, inc_src],
++  include_directories : [inc_include, inc_src, include_directories('/usr/include/android')],
+   dependencies : [
+     vulkan_wsi_deps, dep_libdrm, dep_libudev, idep_vulkan_util_headers,
+     idep_vulkan_runtime_headers, idep_xmlconfig, idep_mesautil, platform_deps,
+diff --git a/src/vulkan/wsi/wsi_common.c b/src/vulkan/wsi/wsi_common.c
+index 113b208f27b..4a0f14423be 100644
+--- a/src/vulkan/wsi/wsi_common.c
++++ b/src/vulkan/wsi/wsi_common.c
+@@ -47,9 +47,10 @@
+ #include <unistd.h>
+ #endif
+ 
+-#ifdef __TERMUX__
++#define __ANDROID_API__ 30
++#define __INTRODUCED_IN(x)
++
+ #include <android/hardware_buffer.h>
+-#endif
+ 
+ uint64_t WSI_DEBUG;
+ 
+@@ -225,7 +226,7 @@ wsi_device_init(struct wsi_device *wsi,
+    WSI_GET_CB(UnmapMemory);
+    if (wsi->khr_present_wait)
+       WSI_GET_CB(WaitSemaphores);
+-#ifdef __TERMUX__
++#if 1
+    WSI_GET_CB(GetMemoryAndroidHardwareBufferANDROID);
+    WSI_GET_CB(GetAndroidHardwareBufferPropertiesANDROID);
+ #endif
+@@ -394,7 +395,7 @@ get_blit_type(const struct wsi_device *wsi,
+       return wsi_cpu_image_needs_buffer_blit(wsi, cpu_params) ?
+          WSI_SWAPCHAIN_BUFFER_BLIT : WSI_SWAPCHAIN_NO_BLIT;
+    }
+-#ifdef __TERMUX__
++#if 1
+    case WSI_IMAGE_TYPE_AHB: {
+       return wsi_get_ahardware_buffer_blit_type(wsi, params, device);
+    }
+@@ -432,7 +433,7 @@ configure_image(const struct wsi_swapchain *chain,
+          container_of(params, const struct wsi_cpu_image_params, base);
+       return wsi_configure_cpu_image(chain, pCreateInfo, cpu_params, info);
+    }
+-#ifdef __TERMUX__
++#if 1
+    case WSI_IMAGE_TYPE_AHB: {
+       return wsi_configure_ahardware_buffer_image(chain, pCreateInfo, params, info);
+    }
+@@ -736,7 +737,7 @@ wsi_destroy_image_info(const struct wsi_swapchain *chain,
+       vk_free(&chain->alloc, info->modifier_props);
+       info->modifier_props = NULL;
+    }
+-#ifdef __TERMUX__
++#if 1
+    if (info->ahardware_buffer_desc != NULL) {
+       vk_free(&chain->alloc, info->ahardware_buffer_desc);
+       info->ahardware_buffer_desc = NULL;
+@@ -804,7 +805,7 @@ wsi_destroy_image(const struct wsi_swapchain *chain,
+ {
+    const struct wsi_device *wsi = chain->wsi;
+ 
+-#ifdef __TERMUX__
++#if 1
+    if (image->ahardware_buffer)
+       AHardwareBuffer_release(image->ahardware_buffer);
+ #endif
+diff --git a/src/vulkan/wsi/wsi_common.h b/src/vulkan/wsi/wsi_common.h
+index 2c0626761d7..643f51f1932 100644
+--- a/src/vulkan/wsi/wsi_common.h
++++ b/src/vulkan/wsi/wsi_common.h
+@@ -279,7 +279,7 @@ struct wsi_device {
+    WSI_CB(MapMemory);
+    WSI_CB(UnmapMemory);
+    WSI_CB(WaitSemaphores);
+-#ifdef __TERMUX__
++#if 1
+    WSI_CB(GetMemoryAndroidHardwareBufferANDROID);
+    WSI_CB(GetAndroidHardwareBufferPropertiesANDROID);
+ #endif
+diff --git a/src/vulkan/wsi/wsi_common_ahardware_buffer.c b/src/vulkan/wsi/wsi_common_ahardware_buffer.c
+index 0177d1db365..46bfbf24760 100644
+--- a/src/vulkan/wsi/wsi_common_ahardware_buffer.c
++++ b/src/vulkan/wsi/wsi_common_ahardware_buffer.c
+@@ -2,6 +2,9 @@
+ #include "wsi_common_private.h"
+ #include "vk_log.h"
+ 
++#define __ANDROID_API__ 30
++#define __INTRODUCED_IN(x)
++
+ #include <android/hardware_buffer.h>
+ 
+ #define AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM 5
+diff --git a/src/vulkan/wsi/wsi_common_private.h b/src/vulkan/wsi/wsi_common_private.h
+index 74e0363f01a..fba686ff6cc 100644
+--- a/src/vulkan/wsi/wsi_common_private.h
++++ b/src/vulkan/wsi/wsi_common_private.h
+@@ -87,7 +87,7 @@ struct wsi_image_info {
+    VkExternalMemoryImageCreateInfo ext_mem;
+    VkImageFormatListCreateInfo format_list;
+    VkImageDrmFormatModifierListCreateInfoEXT drm_mod_list;
+-#ifdef __TERMUX__
++#if 1
+    struct AHardwareBuffer_Desc *ahardware_buffer_desc;
+ #endif
+ 
+@@ -171,7 +171,7 @@ struct wsi_image {
+    int dma_buf_fd;
+ #endif
+    void *cpu_map;
+-#ifdef __TERMUX__
++#if 1
+    struct AHardwareBuffer *ahardware_buffer;
+ #endif
+ };
+diff --git a/src/vulkan/wsi/wsi_common_x11.c b/src/vulkan/wsi/wsi_common_x11.c
+index 34e559cfad6..7f5e32a9e91 100644
+--- a/src/vulkan/wsi/wsi_common_x11.c
++++ b/src/vulkan/wsi/wsi_common_x11.c
+@@ -69,7 +69,10 @@
+ #include <sys/shm.h>
+ #endif
+ 
+-#ifdef __TERMUX__
++#define __ANDROID_API__ 30
++#define __INTRODUCED_IN(x)
++
++#if 1
+ #include <android/hardware_buffer.h>
+ #include <sys/socket.h>
+ #endif
+@@ -2112,7 +2115,7 @@ x11_image_init(VkDevice device_h, struct x11_swapchain *chain,
+       /* If the image has a modifier, we must have DRI3 v1.2. */
+       assert(chain->has_dri3_modifiers);
+ 
+-#ifdef __TERMUX__
++#if 1
+       int sock_fds[2] = { -1, -1 };
+       if (image->base.ahardware_buffer) {
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sock_fds) < 0) {
+@@ -2153,7 +2156,7 @@ x11_image_init(VkDevice device_h, struct x11_swapchain *chain,
+                                               chain->depth, bpp,
+                                               image->base.drm_modifier,
+                                               fds);
+-#ifdef __TERMUX__
++#if 1
+       if (image->base.ahardware_buffer) {
+          xcb_flush(chain->conn);
+          uint8_t read_buf;
+@@ -2666,7 +2669,7 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+          .alloc_shm = wsi_conn->has_mit_shm ? &alloc_shm : NULL,
+       };
+       image_params = &cpu_image_params.base;
+-#ifdef __TERMUX__
++#if 1
+    } else if (wsi_device->wants_ahardware_buffer) {
+       image_params = &(struct wsi_base_image_params){
+          .image_type = WSI_IMAGE_TYPE_AHB,
+-- 
+2.52.0
+

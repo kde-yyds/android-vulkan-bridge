@@ -7,3 +7,5 @@ libhybris/libhybris/
 sysvk/sysvk
 sysvk/src
 vulkan-wsi-layer/src
+mesa-vulkan-icd-wrapper/src/
+mesa-vulkan-icd-wrapper/mesa-vulkan-icd-wrapper/

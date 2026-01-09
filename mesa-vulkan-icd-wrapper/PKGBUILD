@@ -1,0 +1,70 @@
+# Maintainer: kde-yyds
+pkgname=mesa-vulkan-icd-wrapper
+pkgver=25.1.2
+pkgrel=1
+pkgdesc="Vulkan ICD wrapper to use Android Vulkan drivers on Linux via libhybris"
+arch=('aarch64' 'x86_64')
+url="https://github.com/xMeM/mesa"
+license=('MIT')
+depends=(
+  'libhybris'
+  'vulkan-icd-loader'
+  'wayland'
+  'libx11'
+  'libxcb'
+  'libxshmfence'
+  'libdrm'
+)
+makedepends=(
+  'git'
+  'meson'
+  'ninja'
+  'python'
+  'python-mako'
+  'python-packaging'
+  'wayland-protocols'
+  'libxml2'
+)
+
+source=(
+  "mesa-vulkan-icd-wrapper::git+https://github.com/xMeM/mesa.git#branch=wrapper"
+  "0001-mesa-vulkan-icd-wrapper-Enable-Android-Vulkan-driver.patch"
+)
+
+sha256sums=(
+  'SKIP'
+  'SKIP'
+)
+
+prepare() {
+  cd mesa-vulkan-icd-wrapper
+  
+  # Apply patch
+  patch -Np1 -i "${srcdir}/0001-mesa-vulkan-icd-wrapper-Enable-Android-Vulkan-driver.patch"
+}
+
+build() {
+  meson mesa-vulkan-icd-wrapper build \
+    -Dprefix=/usr \
+    -Dcpp_rtti=false \
+    -Dgbm=disabled \
+    -Dopengl=false \
+    -Dllvm=disabled \
+    -Dshared-llvm=disabled \
+    -Dplatforms=x11,wayland \
+    -Dgallium-drivers= \
+    -Dxmlconfig=disabled \
+    -Dvulkan-drivers=wrapper \
+    -Db_ndebug=true \
+    -Dandroid-stub=false
+
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "${pkgdir}"
+  
+  # Install license
+  install -Dm644 mesa-vulkan-icd-wrapper/docs/license.rst \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
